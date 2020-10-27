@@ -540,9 +540,10 @@ class FakeTaskTest(absltest.TestCase):
     # Register a cached test Task.
     dataset_utils.set_global_cache_dirs([self.test_data_dir])
     clear_tasks()
-    add_tfds_task("cached_task")
+    add_tfds_task("cached_task", token_preprocessor=test_token_preprocessor)
+    add_tfds_task("cached_task_no_token_prep")
 
-    # Prepare cached task.
+    # Prepare cached tasks.
     self.cached_task = TaskRegistry.get("cached_task")
     cached_task_dir = os.path.join(self.test_data_dir, "cached_task")
     _dump_fake_dataset(
@@ -550,12 +551,16 @@ class FakeTaskTest(absltest.TestCase):
         _FAKE_TOKENIZED_DATASET["train"], [2, 1], _dump_examples_to_tfrecord)
     _dump_fake_dataset(
         os.path.join(cached_task_dir, "validation.tfrecord"),
-        _FAKE_TOKENIZED_DATASET["validation"], [2], _dump_examples_to_tfrecord)
+        _FAKE_TOKENIZED_DATASET["validation"], [2],
+        _dump_examples_to_tfrecord)
+    shutil.copytree(
+        cached_task_dir,
+        os.path.join(self.test_data_dir, "cached_task_no_token_prep"))
 
     # Prepare uncached TfdsTask.
-    add_tfds_task("uncached_task")
+    add_tfds_task("uncached_task", token_preprocessor=test_token_preprocessor)
+    add_tfds_task("uncached_task_no_token_prep")
     self.uncached_task = TaskRegistry.get("uncached_task")
-
     # Prepare uncached, random TfdsTask
     add_tfds_task("uncached_random_task",
                   token_preprocessor=random_token_preprocessor)
@@ -597,11 +602,15 @@ class FakeTaskTest(absltest.TestCase):
     self.tf_example_task = TaskRegistry.get("tf_example_task")
 
     # Prepare uncached Task.
-    def _dataset_fn(split, shuffle_files):
+    def _dataset_fn(
+        split, shuffle_files,
+        filepattern=os.path.join(self.test_data_dir, "train.tsv*")):
       del split
-      del shuffle_files
-      filepattern = os.path.join(self.test_data_dir, "train.tsv*")
-      return tf.data.TextLineDataset(filepattern)
+      files = tf.data.Dataset.list_files(filepattern, shuffle=shuffle_files)
+      return files.interleave(
+          lambda f: tf.data.TextLineDataset(f).skip(1),
+          num_parallel_calls=tf.data.experimental.AUTOTUNE)
+
     TaskRegistry.add(
         "general_task",
         dataset_providers.Task,

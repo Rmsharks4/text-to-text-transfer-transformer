@@ -166,21 +166,21 @@ class TasksTest(test_utils.FakeTaskTest):
 
   def test_get_dataset_cached(self):
     test_utils.verify_task_matches_fake_datasets(
-        self.cached_task, use_cached=True)
+        self.cached_task, use_cached=True, token_preprocessed=True)
 
-    # Test with token preprocessor.
-    self.cached_task._token_preprocessor = test_utils.test_token_preprocessor
+    # Test without token preprocessor.
     test_utils.verify_task_matches_fake_datasets(
-        self.cached_task, use_cached=False, token_preprocessed=True)
+        TaskRegistry.get("cached_task_no_token_prep"), use_cached=True,
+        token_preprocessed=False)
 
   def test_get_dataset_onthefly(self):
     test_utils.verify_task_matches_fake_datasets(
-        self.uncached_task, use_cached=False)
-
-    # Test with token preprocessor.
-    self.uncached_task._token_preprocessor = test_utils.test_token_preprocessor
-    test_utils.verify_task_matches_fake_datasets(
         self.uncached_task, use_cached=False, token_preprocessed=True)
+
+    # Test without token preprocessor.
+    test_utils.verify_task_matches_fake_datasets(
+        TaskRegistry.get("uncached_task_no_token_prep"), use_cached=False,
+        token_preprocessed=False)
 
     # Override mock to get more examples.
     def fake_load(s, shuffle_files=False):
@@ -217,56 +217,10 @@ class TasksTest(test_utils.FakeTaskTest):
         text_preprocessor=_dummy_preprocessor({"inputs": "a"}))
     with self.assertRaisesRegex(
         ValueError,
-        "Task dataset is missing expected output feature after text "
-        "preprocessing: targets"):
+        "Task dataset is missing expected output feature after preprocessing: "
+        "targets"):
       TaskRegistry.get_dataset(
           "text_missing_required_feature", {"inputs": 13},
-          "train", use_cached=False)
-
-  def test_invalid_text_preprocessors(self):
-    def _dummy_preprocessor(output):
-      return lambda _: tf.data.Dataset.from_tensors(output)
-
-    test_utils.add_tfds_task(
-        "text_prep_ok",
-        text_preprocessor=_dummy_preprocessor(
-            {"inputs": "a", "targets": "b", "other": [0]}))
-    TaskRegistry.get_dataset(
-        "text_prep_ok", {"inputs": 13, "targets": 13},
-        "train", use_cached=False)
-
-    test_utils.add_tfds_task(
-        "text_prep_missing_feature",
-        text_preprocessor=_dummy_preprocessor({"inputs": "a"}))
-    with self.assertRaisesRegex(
-        ValueError,
-        "Task dataset is missing expected output feature after text "
-        "preprocessing: targets"):
-      TaskRegistry.get_dataset(
-          "text_prep_missing_feature", {"inputs": 13, "targets": 13},
-          "train", use_cached=False)
-
-    test_utils.add_tfds_task(
-        "text_prep_wrong_type",
-        text_preprocessor=_dummy_preprocessor({"inputs": 0, "targets": 1}))
-    with self.assertRaisesRegex(
-        ValueError,
-        "Task dataset has incorrect type for feature 'inputs' after text "
-        "preprocessing: Got int32, expected string"):
-      TaskRegistry.get_dataset(
-          "text_prep_wrong_type", {"inputs": 13, "targets": 13},
-          "train", use_cached=False)
-
-    test_utils.add_tfds_task(
-        "text_prep_wrong_shape",
-        text_preprocessor=_dummy_preprocessor(
-            {"inputs": "a", "targets": ["a", "b"]}))
-    with self.assertRaisesRegex(
-        ValueError,
-        "Task dataset has incorrect rank for feature 'targets' after text "
-        "preprocessing: Got 1, expected 0"):
-      TaskRegistry.get_dataset(
-          "text_prep_wrong_shape", {"inputs": 13, "targets": 13},
           "train", use_cached=False)
 
   def test_invalid_token_preprocessors(self):
@@ -290,8 +244,8 @@ class TasksTest(test_utils.FakeTaskTest):
         token_preprocessor=_dummy_preprocessor({"inputs": i64_arr([2, 3])}))
     with self.assertRaisesRegex(
         ValueError,
-        "Task dataset is missing expected output feature after token "
-        "preprocessing: targets"):
+        "Task dataset is missing expected output feature after preprocessing: "
+        "targets"):
       _materialize("token_prep_missing_feature")
 
     test_utils.add_tfds_task(
@@ -300,7 +254,7 @@ class TasksTest(test_utils.FakeTaskTest):
             {"inputs": "a", "targets": i64_arr([3])}))
     with self.assertRaisesRegex(
         ValueError,
-        "Task dataset has incorrect type for feature 'inputs' after token "
+        "Task dataset has incorrect type for feature 'inputs' after "
         "preprocessing: Got string, expected int64"):
       _materialize("token_prep_wrong_type")
 
@@ -310,7 +264,7 @@ class TasksTest(test_utils.FakeTaskTest):
             {"inputs": i64_arr([2, 3]), "targets": i64_arr(1)}))
     with self.assertRaisesRegex(
         ValueError,
-        "Task dataset has incorrect rank for feature 'targets' after token "
+        "Task dataset has incorrect rank for feature 'targets' after "
         "preprocessing: Got 0, expected 1"):
       _materialize("token_prep_wrong_shape")
 
@@ -320,7 +274,7 @@ class TasksTest(test_utils.FakeTaskTest):
             {"inputs": i64_arr([1, 3]), "targets": i64_arr([4])}))
     with self.assertRaisesRegex(
         tf.errors.InvalidArgumentError,
-        r".*Feature \\'inputs\\' unexpectedly contains EOS=1 token after token "
+        r".*Feature \\'inputs\\' unexpectedly contains EOS=1 token after "
         r"preprocessing\..*"):
       _materialize("token_prep_has_eos")
 
@@ -477,7 +431,7 @@ class MixturesTest(test_utils.FakeTaskTest):
     test_utils.assert_datasets_eq(task_ds, mix_ds)
 
   def test_get_dataset_mix(self):
-
+    # pylint:disable=g-long-lambda
     test_utils.add_task(
         "two_task",
         test_utils.get_fake_dataset,
@@ -495,7 +449,7 @@ class MixturesTest(test_utils.FakeTaskTest):
                 "targets": tf.constant([3], tf.int64),
                 "inputs": tf.constant([3], tf.int64),
             }))
-
+    # pylint:enable=g-long-lambda
     MixtureRegistry.add("test_mix4", [("two_task", 1), ("three_task", 1)])
 
     sequence_length = {"inputs": 2, "targets": 2}
